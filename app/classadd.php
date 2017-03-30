@@ -8,8 +8,18 @@ if(!$_user->isAdmin(9)) {
 /*	this is the script that takes new classified entries		**
 **	without the email verification step				*/
 
-require_once('../connections/GMUsers.php');
 require_once('../common/input.php');
+
+// since we don't have an autoloader, we will "require in" the repositories and models
+require_once('Models/ClassifiedAd.php');
+require_once('Repositories/ClassifiedAdRepository.php');
+require_once('Repositories/ClassifiedGroupRepository.php');
+require_once('Repositories/ClassifiedCategoryRepository.php');
+
+// now instantiate the repositories
+$classifiedAdRepository = new \App\Repositories\ClassifiedAdRepository(new \App\Models\ClassifiedAd());
+$classifiedGroupRepository = new \App\Repositories\ClassifiedGroupRepository();
+$classifiedCategoryRepository = new \App\Repositories\ClassifiedCategoryRepository();
 
 function IsValidEmail($EmailIn)
 {
@@ -34,37 +44,6 @@ function DisplayPhoneNumber($Phone) {
 		return "(".substr($Phone,0,3).") ".substr($Phone,3,3)."-".substr($Phone,6,4);
 	else
 		return "";
-}
-
-function RandomLetter()
-{
-	$Letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-	$CharacterCount = strlen($Letters);
-	$CharNum = rand(0, $CharacterCount-1);
-	return $Letters[$CharNum];
-}
-
-function RandomAlphaNum()
-{
-	$Characters =
-	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-	$CharacterCount = strlen($Characters);
-	$CharNum = rand(0, $CharacterCount-1);
-	return $Characters[$CharNum];
-}
-
-function RandomPassword()
-{
-	// Seed the random number generator
-	srand();
-	// Pick a random letter for the first character.
-	$Password = RandomLetter();
-	// Pick a random length
-	$Length = rand(4,6);
-	while (strlen($Password) < $Length) {
-		$Password .= RandomAlphaNum();
-	}
-	return $Password;
 }
 
 function SelectedIfEqual($X, $Y) {
@@ -160,9 +139,6 @@ define("AD_APPROVED", 2);
 define("AD_EXPIRED", 3);
 define("AD_BLOCKED", 4);
 
-//mysql return error codes
-define("ER_DUP_ENTRY","1062");
-
 $editFormAction = $_SERVER['PHP_SELF'];
 if (isset($_SERVER['QUERY_STRING'])) {
 	$editFormAction .= "?" . htmlentities($_SERVER['QUERY_STRING']);
@@ -184,7 +160,6 @@ if ((isset($_POST["insert"])) && ($_POST["insert"] == "insert")) {
 	$TermsAccepted	= StringFromPost("ckterms");
 	$Phone		= StripPhoneNumber(StringFromPost("phone"));
 	$Ip		= $_SERVER["REMOTE_ADDR"];
-//	$Status		= AD_SUBMITTED;
 	$Status		= AD_APPROVED;
 	$ActivationCode	= "";
 
@@ -244,95 +219,52 @@ if ((isset($_POST["insert"])) && ($_POST["insert"] == "insert")) {
 		$message .= "You must agree to the <a href=\"/index.php?content=serviceterms\" target=\"_new\">terms of use</a>.<br><br>";
 	}
 	else {
-		$conn = $GMUsers;
-		mysql_select_db($database_GMUsers,$conn) or die(mysql_error());
-
 		//create an activation code (using the random password function
-//		$ActivationCode = RandomPassword();
 		$ActivationCode = $Password1;
 
-		$sql = 'SELECT caID FROM m_classified_ads WHERE caEmail = \''.mysql_escape_string($Email).
-		       '\' AND ( (caDateExpires >= Now() AND caStatus='.AD_APPROVED.')'.
-		       ' OR (caDateCreated >= SUBDATE(NOW(), INTERVAL 1 DAY) AND caStatus='.AD_SUBMITTED.') )';
-		//echo $sql;
-
+		$result = $classifiedAdRepository->findActiveAds($Email);
 		// TODO: this line allows anyone to enter as many classifieds as they want!!!
+        $result = [];
 
-                $sql = "SELECT caID FROM m_classified_ads WHERE caEmail = 'nobody'"; // for testing
-
-                // !!! ================================================================== !!!
-
-		$result = mysql_query($sql, $conn) or die(mysql_error());
-		if (!mysql_num_rows($result) == 0) {
+		if (!empty($result)) {
 			$message .= "There is a classified ad already posted for this email account.";
-		}
-		else {
-			// clean off old ads
-			$sql = "delete from m_classified_ads where caEmail='".mysql_escape_string($Email)."'"
-				." AND caDateExpires < Now() ";
-			mysql_query($sql, $conn);
 
-			// insert the new ad
-			$sql = "INSERT INTO m_classified_ads (f_ccID, caTitle, caBody, caCity, caState, caEmail, caPassword, caPhone, caDateCreated, caDateExpires, caActivationCode, caStatus, caIP) ";
-			$sql .= "VALUES ('".mysql_escape_string($CategoryID)."', ";
-			$sql .= "'".mysql_escape_string($Title)."', ";
-			$sql .= "'".mysql_escape_string($Body)."', ";
-			$sql .= "'".mysql_escape_string($City)."', ";
-			$sql .= "'".mysql_escape_string($State)."', ";
-			$sql .= "'".mysql_escape_string($Email)."', ";
-			$sql .= "'".md5($Password1)."', ";
-			$sql .= "'".mysql_escape_string($Phone)."', ";
-			$sql .= "NOW(), ";
-			$sql .= "date_add(NOW(), INTERVAL 14 DAY), ";
-			$sql .= "'".md5($ActivationCode)."', ";
-			$sql .= $Status.", ";
-			$sql .= "'".$Ip."')";
+		} else {
 
-			if (mysql_query($sql, $conn)) {
+		    try {
+                // clean off old ads
+                $classifiedAdRepository->deleteOldAds($Email);
 
-				$message = '"'.$Title.'" ad created.';
-                        	$Title		= "";
-                        	$Body		= "";
-                        	$Phone		= "";
-/*				//classified ad inserted successfully, so send the user an activation email
-				$subject = "Welcome to MightyPages";
-				$mailheaders = "From: MightyPages Classified Ad Creation <classified@mightypages.com>\n";
-				$mailheaders .= "Reply-To: classified@mightypages.com";
-				$msg = "Your MightyPages Classified Ad has been created.  Your authorization code to activate your classified ad is:\n\n";
-				$msg .= $ActivationCode;
-				$msg .= "\n\nGo to MightyPages.com to activate your free classified ad. http://www.mightypages.com/classifieds/settings.php?aid=$ActivationCode\n";
-				$msg .= "\n\nThank you for using MightyPages.com!\n";
+                // insert the new ad
+                $ad = $classifiedAdRepository->getNew();
+                $ad->f_ccID = $CategoryID;
+                $ad->caTitle = $Title;
+                $ad->caBody = $Body;
+                $ad->caCity = $City;
+                $ad->caState = $State;
+                $ad->caEmail = $Email;
+                $ad->caPassword = md5($Password1);
+                $ad->caPhone = $Phone;
+                $ad->caDateCreated = date('Y-m-d H:i:s');
+                $ad->caDateExpires = date('Y-m-d H:i:s'); // todo: add 14 days
+                $ad->caActivationCode = md5($ActivationCode);
+                $ad->caStatus = $Status;
+                $ad->caIP = $Ip;
+                $ad->save();
 
-				// send the mail
-				if (mail($Email, $subject, $msg, $mailheaders)) {
+                $message = '"'.$Title.'" ad created.';
+                $Title		= "";
+                $Body		= "";
+                $Phone		= "";
 
-        				//$sql = "SELECT caID FROM m_classified_ads WHERE caEmail = '".mysql_escape_string($Email)."'";
-        				//$result = mysql_query($sql, $conn) or die(mysql_error());
-        				$insertGoTo = 'view.php?caid='.mysql_insert_id();
-        				if (isset($_SERVER['QUERY_STRING'])) {
-        					$insertGoTo .= (strpos($insertGoTo, '?')) ? "&" : "?";
-        					$insertGoTo .= $_SERVER['QUERY_STRING'];
-        				}
-        				header(sprintf("Location: %s", $insertGoTo));
-
-        			} else {
-        				// mail send failed!
-        				$message = "There was an error attempting to send you the activation email. ";
-        				$message .= "Please check your email address and try again.  If the error persists, contact customer service.";
-        				// rollback not available until MySQL 4.1
-        				// then may depend on InnoDB tables
-        				//my_sql_rollback($conn);
-        				mysql_query('delete from m_classified_ads where caID='.mysql_insert_id().' LIMIT 1', $conn);
-        			}
-*/			}
-			else {
-				$message = "There was an unexpected error procesing your request. ";
-				$message .= "Please try again. Please contact customer service if the error persists.";
-			}
+            } catch (PDOException $e) {
+                $message = "There was an unexpected error procesing your request. ";
+                $message .= "Please try again. Please contact customer service if the error persists.";
+            }
 		}
 	}
-}
-else {
+
+} else {
 	//first time to this page... insert post hidden field not detected, so show blank fields
 	$message = "";
 
@@ -348,12 +280,7 @@ else {
 }
 
 //retrieve all of the classified ad groups/sections
-$conn = $GMUsers;
-mysql_select_db($database_GMUsers, $conn);
-$sql = "SELECT * FROM m_classified_groups";
-$rsGroups = mysql_query($sql, $conn) or die(mysql_error());
-$row_rsGroups = mysql_fetch_assoc($rsGroups);
-$NumberGroups = mysql_num_rows($rsGroups);
+$rsGroups = $classifiedGroupRepository->getAll();
 
 //retrieve all of the classified ad categories for the selected group
 $SelectedGroup ="1";
@@ -364,19 +291,14 @@ if (isset($_GET['cat'])) {
 //strip off the leftmost character since we only have groups of 1 to 9.  We will have to change this when we add a new group
 //$SelectedGroup = substr($SelectedGroup,0,1);
 
-$sql = sprintf("SELECT ccID, ccName FROM m_classified_cats WHERE f_cgID = %s ORDER BY ccName", $SelectedGroup);
-$rsCategories = mysql_query($sql, $conn);
+$rsCategories = $classifiedCategoryRepository->findByGroup($SelectedGroup);
 if (!$rsCategories) {
 	$message = "<p><span class='ErrorText'>There was an unexpected error attempting to retrieve the categories for this classified section. ";
 	$message .= "Please try again. Please contact customer service if the error persists.";
 	$ShowForm = false;
 
-}
-else {
-	$row_rsCategories = mysql_fetch_assoc($rsCategories);
-	$NumberCategories = mysql_num_rows($rsCategories);
-
-	if ($NumberCategories == 0) {
+} else {
+	if ($rsCategories->count() === 0) {
 		$message = "<p><span class='ErrorText'>There was an unexpected error attempting to retrieve the categories for this classified section. ";
 		$message .= "Please try again. Please contact customer service if the error persists.";
 		$ShowForm = false;
@@ -402,6 +324,10 @@ function inputCount(field, countfield, maxlength)
 $Tab = CLASSIFIED_TAB;
 ?>
 </td></tr>
+    <!-- Just to point out how old this code is, note all of the 11t.gif references? This is
+         a 1 pixel by 1 pixel transparent GIF, specified with different heights or widths.
+         This was an old way of controlling screen position and table cell/row sizes before
+         absolute and relative positioning was supported in browsers. Back around 2004, maybe. -->
 <tr><td colspan=5 height=5><img
   src="/images/11t.gif" height=5 width=1 alt=""></td></tr>
 
@@ -466,19 +392,14 @@ $Tab = CLASSIFIED_TAB;
         <td class=formlabel>Category:</td>
         <td class=formtext colspan=2><select name="cat" id="cat" onchange="javascript:cg.submit()">
 <?php
-	do {
+    // We will anticipate that the object returned by the repository getAll method will be iterable
+    // so we can use it directly in our foreach loop.
+	foreach ($rsGroups as $row_rsGroups) {
      		echo('<option value="'.$row_rsGroups['cgID'].'" ');
      		SelectedIfEqual($SelectedGroup, $row_rsGroups['cgID']);
      		echo('>'.htmlspecialchars($row_rsGroups['cgName']).'</option>');
-	} while ($row_rsGroups = mysql_fetch_assoc($rsGroups));
-/*	do {
-            if ($SelectedGroup == $row_rsGroups['cgID']) {
-                echo($row_rsGroups['cgName'].'<br />');
-            } else {
-                echo('<a href="'.$_SERVER['PHP_SELF'].'?cat='.$row_rsGroups['cgID'].'">');
-                echo(htmlspecialchars($row_rsGroups['cgName']).'</a><br />');
-            }
-	} while ($row_rsGroups = mysql_fetch_assoc($rsGroups)); */ ?>
+	};
+?>
 	</td>
       </tr>
       </form>
@@ -490,17 +411,12 @@ $Tab = CLASSIFIED_TAB;
         <td class=formlabel>Sub-Category:</td>
         <td class=formtext colspan=2><select name="cbcategory" id="cbcategory">
 <?php
-	do {
+	foreach ($rsCategories as $row_rsCategories) {
      		echo('<option value="'.$row_rsCategories['ccID'].'" ');
      		SelectedIfEqual($CategoryID, $row_rsCategories['ccID']);
      		echo('>'.htmlspecialchars($row_rsCategories['ccName']).'</option>');
-	} while ($row_rsCategories = mysql_fetch_assoc($rsCategories));
-
-     $rows = mysql_num_rows($rsCategories);
-     if($rows > 0) {
-     	mysql_data_seek($rsCategories, 0);
-	  $row_rsCategories = mysql_fetch_assoc($rsCategories);
-     } ?>
+	}
+?>
    </select></td>
       </tr><tr><td height=10 class=formlabel colspan=2><img
         src="/images/11t.gif" height=10 width=1 alt=""></td>
@@ -632,10 +548,7 @@ $Tab = CLASSIFIED_TAB;
       </tr></form>
       </table>
 
-<?php
-mysql_free_result($rsGroups);
-mysql_free_result($rsCategories);
-?>
+
 <script type="text/javascript" language="JavaScript">
 	inputCount(this.fm.body,this.fm.remChars,<?php echo(MAX_BODY_LEN); ?>);
 </script>
