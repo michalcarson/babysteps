@@ -22,3 +22,13 @@ deprecated mysql_* functions from classadd.php.
 
 I've also deleted much of the dead and commented-out code for readability.
 
+### Step 2
+
+I've created a very basic composer.json and added the Symfony Http-Foundation
+package with the following commands.
+
+```
+composer init
+composer require symfony/http-foundation
+```
+

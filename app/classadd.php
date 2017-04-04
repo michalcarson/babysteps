@@ -1,4 +1,9 @@
 <?php
+// The autoload script is regenerated each time Composer runs. By including it here and setting our paths
+// correctly in composer.json, we can remove the require_once statements for any namespaced class. Composer
+// will find it for us.
+require_once('../vendor/autoload.php');
+
 $_user->login();
 if(!$_user->isAdmin(9)) {
 	header('Location: /');
@@ -9,12 +14,6 @@ if(!$_user->isAdmin(9)) {
 **	without the email verification step				*/
 
 require_once('../common/input.php');
-
-// since we don't have an autoloader, we will "require in" the repositories and models
-require_once('Models/ClassifiedAd.php');
-require_once('Repositories/ClassifiedAdRepository.php');
-require_once('Repositories/ClassifiedGroupRepository.php');
-require_once('Repositories/ClassifiedCategoryRepository.php');
 
 // now instantiate the repositories
 $classifiedAdRepository = new \App\Repositories\ClassifiedAdRepository(new \App\Models\ClassifiedAd());

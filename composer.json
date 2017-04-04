@@ -1,0 +1,21 @@
+{
+    "name": "michalcarson/babysteps",
+    "description": "A presentation on refactoring.",
+    "type": "project",
+    "license": "MIT License",
+    "authors": [
+        {
+            "name": "Michal Carson",
+            "email": "michal.carson@carsonsoftwareengineering.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "symfony/http-foundation": "^3.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        }
+    }
+}
