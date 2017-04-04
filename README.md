@@ -32,3 +32,13 @@ composer init
 composer require symfony/http-foundation
 ```
 
+### Step 3
+
+Since I loaded Symfony Http-Foundation components in the last step, I put the
+Request object to use to clean up the code. The greatest impact is probably in
+the usage of `$request->getUri()` where a couple of lines of code were
+replaced by the much more robust Symfony method.
+ 
+There are now two areas where I think the code can be improved most. One area
+is to abstract the HTML into some type of view. The other is to replace the
+tedious validation code with a declarative approach.

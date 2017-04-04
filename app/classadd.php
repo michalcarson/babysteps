@@ -2,7 +2,7 @@
 // The autoload script is regenerated each time Composer runs. By including it here and setting our paths
 // correctly in composer.json, we can remove the require_once statements for any namespaced class. Composer
 // will find it for us.
-require_once('../vendor/autoload.php');
+require_once(__DIR__ . '/../vendor/autoload.php');
 
 $_user->login();
 if(!$_user->isAdmin(9)) {
@@ -14,6 +14,9 @@ if(!$_user->isAdmin(9)) {
 **	without the email verification step				*/
 
 require_once('../common/input.php');
+
+// instantiate the Symfony Request object
+$request = \Symfony\Component\HttpFoundation\Request::createFromGlobals();
 
 // now instantiate the repositories
 $classifiedAdRepository = new \App\Repositories\ClassifiedAdRepository(new \App\Models\ClassifiedAd());
@@ -138,27 +141,24 @@ define("AD_APPROVED", 2);
 define("AD_EXPIRED", 3);
 define("AD_BLOCKED", 4);
 
-$editFormAction = $_SERVER['PHP_SELF'];
-if (isset($_SERVER['QUERY_STRING'])) {
-	$editFormAction .= "?" . htmlentities($_SERVER['QUERY_STRING']);
-}
+$editFormAction = $request->getUri();
 
 $ShowForm = true;
 $message = "";
 
 //insert this classified ad
-if ((isset($_POST["insert"])) && ($_POST["insert"] == "insert")) {
-	$CategoryID	= StringFromPost("cbcategory");
-	$City		= StringFromPost("city");
-	$State		= StringFromPost("cbState");
-	$Title		= StringFromPost("title");
-	$Body		= StringFromPost("body");
-	$Email		= StringFromPost("email");
-	$Password1	= StringFromPost("password1");
-	$Password2	= StringFromPost("password2");
-	$TermsAccepted	= StringFromPost("ckterms");
-	$Phone		= StripPhoneNumber(StringFromPost("phone"));
-	$Ip		= $_SERVER["REMOTE_ADDR"];
+if (($request->request->has('insert') && $request->request->get('insert') === 'insert')) {
+	$CategoryID	= $request->request->get('cbcategory');
+	$City		= $request->request->get('city');
+	$State		= $request->request->get('cbState');
+	$Title		= $request->request->get('title');
+	$Body		= $request->request->get('body');
+	$Email		= $request->request->get('email');
+	$Password1	= $request->request->get('password1');
+	$Password2	= $request->request->get('password2');
+	$TermsAccepted	= $request->request->get('ckterms');
+	$Phone		= StripPhoneNumber($request->request->get('phone'));
+	$Ip		    = $request->getClientIp();
 	$Status		= AD_APPROVED;
 	$ActivationCode	= "";
 
@@ -283,8 +283,8 @@ $rsGroups = $classifiedGroupRepository->getAll();
 
 //retrieve all of the classified ad categories for the selected group
 $SelectedGroup ="1";
-if (isset($_GET['cat'])) {
-	$SelectedGroup = (get_magic_quotes_gpc()) ? $_GET['cat'] : addslashes($_GET['cat']);
+if ($request->query->has('cat')) {
+	$SelectedGroup = (get_magic_quotes_gpc()) ? $request->query->get('cat') : addslashes($request->query->get('cat'));
 }
 
 //strip off the leftmost character since we only have groups of 1 to 9.  We will have to change this when we add a new group
@@ -385,7 +385,7 @@ $Tab = CLASSIFIED_TAB;
 <p>Simply fill out this form to submit your free classified ad.
 <?php if ($ShowForm == false) exit(); ?>
 
-      <form action="<?php ($_SERVER['PHP_SELF']); ?>" method="get" name="cg" id="cg">
+      <form action="<?php echo $request->getBaseUrl(); ?>" method="get" name="cg" id="cg">
       <table width="100%" cellspacing=0 cellpadding=0 border=0>
       <tr>
         <td class=formlabel>Category:</td>
